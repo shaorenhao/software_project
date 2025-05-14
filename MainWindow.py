@@ -1,15 +1,20 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QTextEdit, QLineEdit, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QScrollArea, QFrame
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QTextCursor
 from SettingsUI import SettingsUI
+import json
+import os
+from api import LLMClient
 
 class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("软件助手")
+        self.llm_client = None
         self.setGeometry(200, 200, 820, 620)
         self.initUI()
+        self.load_config()
 
     def initUI(self):
         # 设置字体
@@ -24,7 +29,7 @@ class MainApp(QMainWindow):
 
         # 标题栏
         header_layout = QHBoxLayout()
-        ai_label = QLabel("GPT-4.5")
+        ai_label = QLabel("DeepSeek-R1-Distill-Qwen-7B")
         ai_label.setFont(QFont("微软雅黑", 16, QFont.Weight.Bold))
         ai_label.setStyleSheet("font-weight: bold; font-size: 18px; background-color: #87CEEB; color: white; padding: 5px 10px; border-radius: 8px;")
         header_layout.addWidget(ai_label)
@@ -63,13 +68,59 @@ class MainApp(QMainWindow):
         main_layout.addWidget(self.display_area)
         main_layout.addLayout(input_layout)
 
+    def load_config(self):
+        """加载API密钥和其他配置"""
+        if os.path.exists('config.json'):
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+                api_key = config.get('api_key', '')
+                self.llm_client = LLMClient(api_key="sk-nnnbfontekeesozhffpmluqdajbwzqvxeskyevmxwfignhgh")
+
     def send_message(self):
         message = self.input_field.text()
         if message:
             self.display_user_message(message)
             self.input_field.clear()
-            # 模拟大模型回复（这里可替换为 API 调用）
-            QTimer.singleShot(1000, lambda: self.display_model_message("这是大模型的回复：" + message))
+            
+            if self.llm_client:
+                # 显示"正在思考..."提示
+                thinking_msg = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考...</div>"
+                self.display_area.append(thinking_msg)
+                
+                # 获取滚动条位置
+                scroll_bar = self.display_area.verticalScrollBar()
+                scroll_pos = scroll_bar.value()
+                
+                # 发送消息到LLM
+                QTimer.singleShot(100, lambda: self.get_llm_response(message, scroll_pos))
+            else:
+                self.display_model_message("错误: 未配置API密钥，请在设置中添加")
+
+    def get_llm_response(self, message, scroll_pos):
+        """获取LLM回复并更新UI"""
+        try:
+            response = self.llm_client.chat_completion([
+                {"role": "user", "content": message}
+            ])
+            
+            if response and 'choices' in response and len(response['choices']) > 0:
+                # # 移除"正在思考..."消息
+                # cursor = self.display_area.textCursor()
+                # cursor.movePosition(QTextCursor.MoveOperation.End)
+                # cursor.select(QTextCursor.SelectionType.Document)
+                # cursor.removeSelectedText()
+                
+                # 添加实际回复
+                reply = response['choices'][0]['message']['content']
+                self.display_model_message(reply)
+                
+                # 恢复滚动位置
+                scroll_bar = self.display_area.verticalScrollBar()
+                scroll_bar.setValue(scroll_pos)
+            else:
+                self.display_model_message("错误: 无法获取有效的回复")
+        except Exception as e:
+            self.display_model_message(f"错误: {str(e)}")
 
     def display_user_message(self, message):
         user_message = f"<div style='background-color: #87CEEB; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-end; color: #fff; text-align: right;'>你: {message}</div>"
