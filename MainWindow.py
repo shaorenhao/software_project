@@ -1,11 +1,31 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QTextEdit, QLineEdit, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QScrollArea, QFrame
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QTextCursor
 from SettingsUI import SettingsUI
 import json
 import os
+import time
 from api import LLMClient
+
+class Worker(QThread):
+    finished = pyqtSignal(dict, str)  # 返回响应和原始消息
+    error = pyqtSignal(str)
+
+    def __init__(self, client, message):
+        super().__init__()
+        self.client = client
+        self.message = message
+
+    def run(self):
+        self.message=str(self.message)
+        try:
+            response = self.client.chat_completion([
+                {"role": "user", "content": self.message}
+            ])
+            self.finished.emit(response, self.message)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -13,6 +33,7 @@ class MainApp(QMainWindow):
         self.setWindowTitle("软件助手")
         self.llm_client = None
         self.setGeometry(200, 200, 820, 620)
+        self.message_history = [{'role': 'user', 'content': '请记住，你是软件工程学习助手，我下面的所有对话都基于此进行'}]  # 存储完整的对话历史
         self.initUI()
         self.load_config()
 
@@ -86,49 +107,36 @@ class MainApp(QMainWindow):
                 # 显示"正在思考..."提示
                 thinking_msg = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考...</div>"
                 self.display_area.append(thinking_msg)
-                
-                # 获取滚动条位置
-                scroll_bar = self.display_area.verticalScrollBar()
-                scroll_pos = scroll_bar.value()
-                
-                # 发送消息到LLM
-                QTimer.singleShot(100, lambda: self.get_llm_response(message, scroll_pos))
+                # self.thinking_msg_id = self.get_last_message_id()
+                self.message_history.append({"role": "user", "content": message})
+                # 创建并启动工作线程
+                self.worker = Worker(self.llm_client, self.message_history.copy())
+                self.worker.finished.connect(self.handle_response)
+                self.worker.error.connect(self.display_model_message)
+                self.worker.start()
             else:
                 self.display_model_message("错误: 未配置API密钥，请在设置中添加")
 
-    def get_llm_response(self, message, scroll_pos):
-        """获取LLM回复并更新UI"""
-        try:
-            response = self.llm_client.chat_completion([
-                {"role": "user", "content": message}
-            ])
+    def handle_response(self, response, original_message):
+        """处理LLM的响应"""
+        if response and 'choices' in response and len(response['choices']) > 0:
+            reply = response['choices'][0]['message']['content']
+            self.display_model_message(reply)
             
-            if response and 'choices' in response and len(response['choices']) > 0:
-                # # 移除"正在思考..."消息
-                # cursor = self.display_area.textCursor()
-                # cursor.movePosition(QTextCursor.MoveOperation.End)
-                # cursor.select(QTextCursor.SelectionType.Document)
-                # cursor.removeSelectedText()
-                
-                # 添加实际回复
-                reply = response['choices'][0]['message']['content']
-                self.display_model_message(reply)
-                
-                # 恢复滚动位置
-                scroll_bar = self.display_area.verticalScrollBar()
-                scroll_bar.setValue(scroll_pos)
-            else:
-                self.display_model_message("错误: 无法获取有效的回复")
-        except Exception as e:
-            self.display_model_message(f"错误: {str(e)}")
+            # 添加AI回复到历史
+            self.message_history.append({"role": "assistant", "content": reply})
+        else:
+            self.display_error_message("错误: 无法获取有效的回复")
 
     def display_user_message(self, message):
+        message_id = f"user_msg_{int(time.time()*1000)}"
         user_message = f"<div style='background-color: #87CEEB; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-end; color: #fff; text-align: right;'>你: {message}</div>"
         self.display_area.append(user_message)
 
     def display_model_message(self, message):
-        model_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>{message}</div>"
+        model_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: {message}</div>"
         self.display_area.append(model_message)
+
 
     def open_settings(self):
         self.settings_window = SettingsUI()

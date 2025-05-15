@@ -9,6 +9,7 @@ class LLMClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+        self.timeout = 30  # 设置30秒超时
     
     def chat_completion(self, messages: list, model: str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B", **kwargs) -> Optional[Dict]:
         """与LLM进行交互"""
@@ -23,12 +24,12 @@ class LLMClient:
         }
         
         try:
-            response = requests.post(url, json=payload, headers=self.headers)
+            response = requests.post(url, json=payload, headers=self.headers, timeout=self.timeout)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"API请求出错: {e}")
-            return None
+            raise  # 重新抛出异常以便在worker线程中捕获
 
 # 示例用法
 if __name__ == "__main__":
