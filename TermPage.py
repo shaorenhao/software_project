@@ -3,8 +3,28 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
     QTextEdit, QLineEdit, QPushButton, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QThread, pyqtSignal
+from TermAgent import TermAgent
+import time
 
+class Worker(QThread):
+    finished = pyqtSignal(dict, str)  # 返回响应和原始消息
+    error = pyqtSignal(str)
+
+    def __init__(self, message):
+        super().__init__()
+        self.agent = TermAgent()
+        self.message = message
+
+    def run(self):
+        self.message=str(self.message)
+        try:
+            response = self.agent.chat([
+                {"role": "user", "content": self.message}
+            ])
+            self.finished.emit(response, self.message)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class  TermPage(QWidget):
     def __init__(self, main_window):
@@ -15,7 +35,16 @@ class  TermPage(QWidget):
         self.setStyleSheet("background-color: #f9f9f9; border: 1px solid #ccc;")
         self._drag_active = False  # 用于窗口拖动
         self._drag_position = QPoint()
+        self.message_history = [{
+            'role': 'root-system', 
+            'content': '你是一个专业的软件工程课程助手的术语解析智能体，主动对user的软件工程相关术语进行解释。\
+                        这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
+                        请避免一直重复同一句话。\
+                        同时，你必须拒绝回答任何与软件工程无关的问题，并礼貌地将对话引导回主题。\
+                        "'
+        }]
         self.setup_ui()
+        self.worker = Worker(self.message_history.copy())
 
     def setup_ui(self):
         main_layout = QVBoxLayout()
@@ -102,13 +131,41 @@ class  TermPage(QWidget):
         self.input_entry.returnPressed.connect(self.on_send)
 
     def on_send(self):
-        text = self.input_entry.text().strip()
-        if text:
-            # 模拟发送内容
-            self.dialogue_area.append(f"<b>我：</b> {text}")
-            reply = f"这是概念解析助手的回复：{text}"
-            self.dialogue_area.append(f"<b>助手：</b> {reply}\n")
+        message = self.input_entry.text()
+        if message:
+            self.display_user_message(message)
             self.input_entry.clear()
+            
+            # 显示"正在思考..."提示
+            thinking_msg = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考...</div>"
+            self.dialogue_area.append(thinking_msg)
+            # self.thinking_msg_id = self.get_last_message_id()
+            self.message_history.append({"role": "user", "content": message})
+            # 创建并启动工作线程
+            self.worker = Worker(self.message_history.copy())
+            self.worker.finished.connect(self.handle_response)
+            self.worker.error.connect(self.display_model_message)
+            self.worker.start()
+
+    def handle_response(self, response, original_message):
+        """处理LLM的响应"""
+        if response and 'choices' in response and len(response['choices']) > 0:
+            reply = response['choices'][0]['message']['content']
+            self.display_model_message(reply)
+            
+            # 添加AI回复到历史
+            self.message_history.append({"role": "assistant", "content": reply})
+        else:
+            self.display_error_message("错误: 无法获取有效的回复")
+
+    def display_user_message(self, message):
+        message_id = f"user_msg_{int(time.time()*1000)}"
+        user_message = f"<div style='background-color: #87CEEB; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-end; color: #fff; text-align: right;'>你: {message}</div>"
+        self.dialogue_area.append(user_message)
+
+    def display_model_message(self, message):
+        model_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: {message}</div>"
+        self.dialogue_area.append(model_message)
 
     # ===========================
     # 窗口拖动逻辑

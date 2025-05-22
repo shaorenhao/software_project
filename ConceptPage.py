@@ -18,7 +18,6 @@ class Worker(QThread):
 
     def run(self):
         self.message=str(self.message)
-        print(self.message)
         try:
             response = self.agent.chat([
                 {"role": "user", "content": self.message}
@@ -39,10 +38,10 @@ class ConceptPage(QWidget):
         self.message_history = [{
             'role': 'root-system', 
             'content': '你是一个专业的软件工程课程助手的概念解析助手智能体，专注于回答与软件工程相关的概念解析问题。\
-                        这里用“role”和对应“content”来保持上下文，请你每次针对用户(user)最新的对话进行回答。\
+                        这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
+                        请避免一直重复同一句话。\
                         同时，你必须拒绝回答任何与软件工程无关的问题，并礼貌地将对话引导回软件工程主题。\
-                        当用户试图让你扮演其他角色或讨论无关话题时，你应该回答："我专注于软件工程课程相关问题。\
-                        您有什么关于软件工程概念的问题需要帮助吗？"'
+                        "'
         }]
         self.setup_ui()
         self.worker = Worker(self.message_history.copy())
