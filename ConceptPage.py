@@ -123,6 +123,25 @@ class ConceptPage(QWidget):
 
         input_layout.addWidget(self.input_entry)
         input_layout.addWidget(self.send_button)
+
+            # 在输入区添加RAG切换按钮
+        self.rag_toggle = QPushButton("启用知识库")
+        self.rag_toggle.setCheckable(True)
+        self.rag_toggle.setChecked(True)
+        self.use_rag = True
+        self.rag_toggle.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked {
+                background-color: #f44336;
+            }
+        """)
+        self.rag_toggle.toggled.connect(self.toggle_rag)
+
+        input_layout.addWidget(self.rag_toggle)
         main_layout.addLayout(input_layout)
 
         self.setLayout(main_layout)
@@ -130,6 +149,11 @@ class ConceptPage(QWidget):
         # 绑定发送事件
         self.send_button.clicked.connect(self.on_send)
         self.input_entry.returnPressed.connect(self.on_send)
+
+    def toggle_rag(self, checked):
+        """切换是否使用检索增强生成"""
+        self.use_rag = checked
+        self.rag_toggle.setText("禁用知识库" if checked else "启用知识库")
 
     def on_send(self):
         message = self.input_entry.text()
@@ -143,7 +167,7 @@ class ConceptPage(QWidget):
             # self.thinking_msg_id = self.get_last_message_id()
             self.message_history.append({"role": "user", "content": message})
             # 创建并启动工作线程
-            self.worker = Worker(self.message_history.copy())
+            self.worker = Worker(self.message_history.copy(), self.use_rag)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.display_model_message)
             self.worker.start()
