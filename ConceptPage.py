@@ -11,17 +11,18 @@ class Worker(QThread):
     finished = pyqtSignal(dict, str)  # 返回响应和原始消息
     error = pyqtSignal(str)
 
-    def __init__(self, message):
+    def __init__(self, message, use_rag):
         super().__init__()
         self.agent = ConceptAgent()
         self.message = message
+        self.use_rag = use_rag
 
     def run(self):
         self.message=str(self.message)
         try:
             response = self.agent.chat([
                 {"role": "user", "content": self.message}
-            ])
+            ], self.use_rag)
             self.finished.emit(response, self.message)
         except Exception as e:
             self.error.emit(str(e))
@@ -44,7 +45,8 @@ class ConceptPage(QWidget):
                         "'
         }]
         self.setup_ui()
-        self.worker = Worker(self.message_history.copy())
+        self.use_rag = True
+        self.worker = Worker(self.message_history.copy(),self.use_rag)
         
 
     def setup_ui(self):
@@ -124,23 +126,20 @@ class ConceptPage(QWidget):
         input_layout.addWidget(self.input_entry)
         input_layout.addWidget(self.send_button)
 
-            # 在输入区添加RAG切换按钮
-        self.rag_toggle = QPushButton("启用知识库")
+        self.rag_toggle = QPushButton("知识库已启用")  # 初始状态为启用
         self.rag_toggle.setCheckable(True)
-        self.rag_toggle.setChecked(True)
-        self.use_rag = True
+        self.rag_toggle.setChecked(True)  # 初始选中状态
         self.rag_toggle.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #f44336;
                 color: white;
                 font-weight: bold;
             }
             QPushButton:checked {
-                background-color: #f44336;
+                background-color: #4CAF50;
             }
         """)
         self.rag_toggle.toggled.connect(self.toggle_rag)
-
         input_layout.addWidget(self.rag_toggle)
         main_layout.addLayout(input_layout)
 
@@ -152,8 +151,13 @@ class ConceptPage(QWidget):
 
     def toggle_rag(self, checked):
         """切换是否使用检索增强生成"""
+        if checked:
+            self.rag_toggle.setText("知识库已启用")
+            self.rag_toggle.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        else:
+            self.rag_toggle.setText("知识库已禁用")
+            self.rag_toggle.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
         self.use_rag = checked
-        self.rag_toggle.setText("禁用知识库" if checked else "启用知识库")
 
     def on_send(self):
         message = self.input_entry.text()
