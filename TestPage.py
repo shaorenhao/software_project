@@ -35,7 +35,7 @@ class  TestPage(QWidget):
         self._drag_active = False  # 用于窗口拖动
         self._drag_position = QPoint()
         self.message_history = [{
-            'role': 'root-system', 
+            'role': 'system', 
             'content': '你是一个专业的软件工程课程助手的软件测试智能体，专注于协助软件测试，主动给出user提出的测试用例。\
                         这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
                         请避免一直重复同一句话。\

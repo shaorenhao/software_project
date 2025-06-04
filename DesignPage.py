@@ -36,7 +36,7 @@ class  DesignPage(QWidget):
         self._drag_active = False  # 用于窗口拖动
         self._drag_position = QPoint()
         self.message_history = [{
-            'role': 'root-system', 
+            'role': 'system', 
             'content': '你是一个专业的软件工程课程助手的软件设计智能体，主动分析user提出的系统，进行总体设计或详细设计。\
                         这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
                         请避免一直重复同一句话。\

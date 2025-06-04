@@ -2,12 +2,17 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings 
 from typing import List, Dict, Optional
 import os
+from pathlib import Path
 
 class FAISSVectorDB:
-    def __init__(self, collection_name: str = "software_concepts", persist_dir: str = "faiss_db"):
+    def __init__(self, collection_name, persist_dir: str = "faiss_db"):
+        # 获取当前脚本所在目录
+        current_dir = Path(__file__).parent.absolute()
+        model_path = os.path.join(current_dir, "all-MiniLM-L6-v2")
+
         # 初始化嵌入模型
         self.embedding_model = HuggingFaceEmbeddings(
-            model_name="./all-MiniLM-L6-v2", 
+            model_name=model_path, 
             model_kwargs={'device': 'cpu'}
         )
                 

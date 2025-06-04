@@ -36,7 +36,7 @@ class RequirementPage(QWidget):
         self._drag_active = False
         self._drag_position = QPoint()
         self.message_history = [{
-            'role': 'root-system', 
+            'role': 'system', 
             'content': '你是一个专业的软件工程课程助手的需求分析智能体，专注于协助需求分析，主动分析user提出的系统，进行需求分析。\
                         当需要展示系统架构、流程图、类图或时序图时，必须严格按照以下格式:\
                         ```mermaid\

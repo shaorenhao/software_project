@@ -71,7 +71,7 @@ class MainScreen(DraggableWindow):
 
         self.llm_client = None
         self.message_history = [{
-            'role': 'root-system', 
+            'role': 'system', 
             'content': '你是一个专业的软件工程课程助手，专注于回答与软件工程相关的问题。\
                         这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
                         请避免一直重复同一句话。\
