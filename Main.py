@@ -17,6 +17,9 @@ import os
 import time
 from api import LLMClient
 
+import ssl
+
+
 class Worker(QThread):
     finished = pyqtSignal(dict, str)  # 返回响应和原始消息
     error = pyqtSignal(str)

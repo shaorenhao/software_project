@@ -324,22 +324,7 @@ class RequirementPage(QWidget):
 
     def append_html(self, html_content):
         """追加HTML内容到对话区域"""
-        # # 获取当前HTML
-        # self.dialogue_area.page().toHtml(lambda html: setattr(self, "current_html", html))
-        
-        # # 在</body>前插入新内容
-        # new_html = self.current_html.replace("</body>", html_content + "</body>")
-        # print(new_html)
-        # print("啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊\n")
 
-        # # 设置新HTML
-        # self.dialogue_area.setHtml(new_html)
-        
-        # # 滚动到底部
-        # # self.dialogue_area.page().verticalScrollBar().setValue(
-        # #     self.dialogue_area.page().verticalScrollBar().maximum()
-        # # )
-        # # self.dialogue_area.page().runJavaScript("window.scrollTo(0, document.body.scrollHeight);")
     # 使用JavaScript直接插入新内容
         print(html_content)
         js_code = f"""
