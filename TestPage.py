@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QPoint, QThread, pyqtSignal
 from TestAgent import TestAgent
 import time
+
+
 class Worker(QThread):
     finished = pyqtSignal(dict, str)  # 返回响应和原始消息
     error = pyqtSignal(str)
@@ -16,7 +18,7 @@ class Worker(QThread):
         self.message = message
 
     def run(self):
-        self.message=str(self.message)
+        self.message = str(self.message)
         try:
             response = self.agent.chat([
                 {"role": "user", "content": self.message}
@@ -25,7 +27,8 @@ class Worker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-class  TestPage(QWidget):
+
+class TestPage(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -35,12 +38,13 @@ class  TestPage(QWidget):
         self._drag_active = False  # 用于窗口拖动
         self._drag_position = QPoint()
         self.message_history = [{
-            'role': 'system', 
-            'content': '你是一个专业的软件工程课程助手的软件测试智能体，专注于协助软件测试，主动给出user提出的测试用例。\
-                        这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
-                        请避免一直重复同一句话。\
-                        同时，你必须拒绝回答任何与软件工程或软件测试无关的问题，并礼貌地将对话引导回主题。\
-                        "'
+            'role': 'system',
+            'content': '你是一个专业的软件工程课程助手的软件测试智能体，专注于协助软件测试。请按照以下格式生成测试用例：\n'
+                       '影响的变量：[变量1, 变量2, ...]\n'
+                       '测试用例：\n'
+                       '- 变量取值：[取值1, 取值2, ...]，预期结果：[预期结果描述]\n'
+                       '- 变量取值：[取值1, 取值2, ...]，预期结果：[预期结果描述]\n'
+                       '请避免一直重复同一句话。同时，你必须拒绝回答任何与软件工程或软件测试无关的问题，并礼貌地将对话引导回主题。'
         }]
         self.setup_ui()
         self.worker = Worker(self.message_history.copy())
@@ -87,27 +91,13 @@ class  TestPage(QWidget):
         self.title_bar.setLayout(title_layout)
         main_layout.addWidget(self.title_bar)
 
-        # 支持关键词展示 - 高度贴近，仅占 25px
-        self.keywords_label = QLabel("支持关键词：")
-        self.keywords_label.setStyleSheet("padding: 0px 5px; font-size: 12px; color: #555555;")
-        self.keywords_label.setFixedHeight(25)  # 减小高度
-        main_layout.addWidget(self.keywords_label)
-
-        # 对话区 - 占据主要高度
-        self.dialogue_area = QTextEdit()
-        self.dialogue_area.setReadOnly(True)
-        self.dialogue_area.setStyleSheet(
-            "background-color: #ffffff; border: 1px solid #ccc; border-radius: 0px;"
-        )
-        main_layout.addWidget(self.dialogue_area)
-
         # 输入区 - 高度贴近，仅占 60px，高度适中
         input_layout = QHBoxLayout()
         input_layout.setContentsMargins(5, 5, 5, 5)
         input_layout.setSpacing(5)
 
         self.input_entry = QLineEdit()
-        self.input_entry.setPlaceholderText("请输入您的问题...")
+        self.input_entry.setPlaceholderText("请输入您想要的测试用例的相关信息...")
         self.input_entry.setStyleSheet(
             "padding: 5px; font-size: 14px; border: 1px solid #007acc;"
         )
@@ -123,6 +113,14 @@ class  TestPage(QWidget):
         input_layout.addWidget(self.send_button)
         main_layout.addLayout(input_layout)
 
+        # 对话区 - 占据主要高度
+        self.dialogue_area = QTextEdit()
+        self.dialogue_area.setReadOnly(True)
+        self.dialogue_area.setStyleSheet(
+            "background-color: #ffffff; border: 1px solid #ccc; border-radius: 0px;"
+        )
+        main_layout.addWidget(self.dialogue_area)
+
         self.setLayout(main_layout)
 
         # 绑定发送事件
@@ -132,13 +130,7 @@ class  TestPage(QWidget):
     def on_send(self):
         message = self.input_entry.text()
         if message:
-            self.display_user_message(message)
             self.input_entry.clear()
-            
-            # 显示"正在思考..."提示
-            thinking_msg = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考...</div>"
-            self.dialogue_area.append(thinking_msg)
-            # self.thinking_msg_id = self.get_last_message_id()
             self.message_history.append({"role": "user", "content": message})
             # 创建并启动工作线程
             self.worker = Worker(self.message_history.copy())
@@ -151,41 +143,39 @@ class  TestPage(QWidget):
         if response and 'choices' in response and len(response['choices']) > 0:
             reply = response['choices'][0]['message']['content']
             self.display_model_message(reply)
-            
-            # 添加AI回复到历史
-            self.message_history.append({"role": "assistant", "content": reply})
         else:
             self.display_error_message("错误: 无法获取有效的回复")
 
-    def display_user_message(self, message):
-        message_id = f"user_msg_{int(time.time()*1000)}"
-        user_message = f"<div style='background-color: #87CEEB; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-end; color: #fff; text-align: right;'>你: {message}</div>"
-        self.dialogue_area.append(user_message)
-
     def display_model_message(self, message):
-        model_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: {message}</div>"
+        # 优化样式，增加换行、空行，调整文字大小和字体
+        model_message = f"""
+        <div style='
+            background-color: #D3D3D3; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 15px; 
+            max-width: 70%; 
+            align-self: flex-start; 
+            text-align: left;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        '>
+            AI: <pre style='white-space: pre-wrap; word-wrap: break-word;'>{message}</pre>
+        </div>
+        """
         self.dialogue_area.append(model_message)
 
-    # ===========================
-    # 窗口拖动逻辑
-    # ===========================
-    def mousePressEvent(self, event):
-        event.ignore()
-
-    def mouseMoveEvent(self, event):
-        event.ignore()
-
-    def mouseReleaseEvent(self, event):
-        event.ignore()
-
+    def display_error_message(self, message):
+        error_message = f"<div style='color: red; padding: 10px; text-align: left;'>{message}</div>"
+        self.dialogue_area.append(error_message)
 
 
 # if __name__ == "__main__":
 #     app = QApplication(sys.argv)
-
+#
 #     # 测试窗口
-#     window = ConceptPage()
+#     window = TestPage(None)
 #     window.resize(700, 800)  # 宽度 700，高度 800，与主窗口高度保持一致
 #     window.show()
-
+#
 #     sys.exit(app.exec())

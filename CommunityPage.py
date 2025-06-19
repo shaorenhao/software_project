@@ -1,39 +1,64 @@
+import requests
+import time
+import json
+import logging
 from PyQt6.QtWidgets import (
     QWidget, QPushButton, QLabel, QTextEdit,
-    QHBoxLayout, QVBoxLayout
+    QHBoxLayout, QVBoxLayout, QSpacerItem, QSizePolicy
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 
 class CommunityPage(QWidget):
+    new_message_received = pyqtSignal(str)
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
         self.resize(400, 800)
-        self.setWindowTitle("社区页面")
+        self.setWindowTitle("社区交流")
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setStyleSheet("""
             background-color: #f9f9f9; 
             border: 2px solid #007acc; 
             border-radius: 8px;
         """)
-
+        self.last_fetch_time = 0  # 记录上次获取消息的时间戳
         self.init_ui()
 
+        # 连接信号到槽函数
+        self.new_message_received.connect(self.append_message)
+
+        # 首次加载数据
+        self.fetch_messages()
+
     def init_ui(self):
-        # 顶部按钮区域（只保留关闭按钮）
+        # 顶部按钮区域（关闭按钮和更新按钮）
         self.top_buttons_widget = QWidget(self)
         top_layout = QHBoxLayout(self.top_buttons_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(10)
+
+        self.update_btn = QPushButton("更新")
+        self.update_btn.setFixedSize(60, 35)
+        self.update_btn.clicked.connect(self.fetch_messages)
+        self.update_btn.setStyleSheet(self.button_style())
 
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(40, 35)
         self.close_btn.clicked.connect(self.close)
         self.close_btn.setStyleSheet(self.close_button_style())
 
+        top_layout.addWidget(self.update_btn)
         top_layout.addStretch()
         top_layout.addWidget(self.close_btn)
-        self.top_buttons_widget.setGeometry(self.width() - 70, 10, 70, 40)
+        self.top_buttons_widget.setGeometry(10, 10, self.width() - 20, 40)
 
         # 标题
         self.title_label = QLabel("社区交流", self)
@@ -77,13 +102,112 @@ class CommunityPage(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.top_buttons_widget.move(self.width() - 70, 10)
+        self.top_buttons_widget.setGeometry(10, 10, self.width() - 20, 40)
 
     def send_message(self):
         message = self.input_entry.toPlainText().strip()
         if message:
-            self.chat_display.append(f"我: {message}")
-            self.input_entry.clear()
+            try:
+                # 替换为你的华为云服务器IP
+                api_url = "http://113.44.148.120:5000/messages"
+                response = requests.post(api_url, json={"message": message})
+                response.raise_for_status()
+
+                # 显示自己发送的消息
+                time_str = time.strftime("%H:%M", time.localtime())
+                self.new_message_received.emit(f"我 [{time_str}]: {message}")
+
+                # 发送成功后立即更新消息
+                self.fetch_messages()
+
+            except requests.exceptions.RequestException as e:
+                self.new_message_received.emit(f"发送失败: {str(e)}")
+            except Exception as e:
+                logging.error(f"发送消息异常: {e}")
+                self.new_message_received.emit("发送失败: 未知错误")
+            finally:
+                self.input_entry.clear()
+
+    def fetch_messages(self):
+        """手动获取消息（由更新按钮触发）"""
+        try:
+            # 显示加载中状态
+            self.new_message_received.emit("正在获取最新消息...")
+
+            # 构建请求URL
+            api_url = f"http://113.44.148.120:5000/messages?timestamp={self.last_fetch_time}"
+            logging.info(f"请求URL: {api_url}")
+
+            # 发送请求
+            response = requests.get(api_url, timeout=10)
+            response.raise_for_status()
+
+            # 清除"正在获取"消息
+            cursor = self.chat_display.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            cursor.movePosition(cursor.MoveOperation.StartOfLine)
+            cursor.removeSelectedText()
+            self.chat_display.setTextCursor(cursor)
+
+            # 解析JSON响应
+            try:
+                new_messages = response.json()
+                logging.info(f"获取到 {len(new_messages)} 条新消息")
+            except json.JSONDecodeError as e:
+                error_msg = f"解析消息失败: 服务器返回非JSON数据: {response.text[:100]}"
+                logging.error(error_msg)
+                self.new_message_received.emit(error_msg)
+                return
+
+            # 处理消息列表
+            if not new_messages:
+                self.new_message_received.emit("没有新消息")
+                return
+
+            # 按时间排序（确保消息按顺序显示）
+            new_messages.sort(key=lambda x: x.get("timestamp", 0))
+
+            for msg in new_messages:
+                # 安全获取消息字段
+                timestamp = msg.get("timestamp", 0)
+                sender = msg.get("sender", "未知用户")
+                message = msg.get("message", "")
+
+                # 格式化时间
+                if timestamp > 0:
+                    time_str = time.strftime("%H:%M", time.localtime(timestamp))
+                else:
+                    time_str = "未知时间"
+
+                # 构建完整消息并发送信号
+                message_text = f"{sender} [{time_str}]: {message}"
+                self.new_message_received.emit(message_text)
+
+            # 更新最后获取时间
+            timestamps = [msg.get("timestamp", 0) for msg in new_messages]
+            if timestamps and max(timestamps) > self.last_fetch_time:
+                self.last_fetch_time = max(timestamps)
+                logging.info(f"更新last_fetch_time为: {self.last_fetch_time}")
+
+        except requests.exceptions.Timeout:
+            error_msg = "错误: 请求超时，请检查网络连接"
+            logging.warning(error_msg)
+            self.new_message_received.emit(error_msg)
+        except requests.exceptions.ConnectionError:
+            error_msg = "错误: 无法连接到服务器，请检查IP和端口"
+            logging.error(error_msg)
+            self.new_message_received.emit(error_msg)
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"HTTP错误: {e.response.status_code}"
+            logging.error(error_msg)
+            self.new_message_received.emit(error_msg)
+        except Exception as e:
+            error_msg = f"未知错误: {str(e)}"
+            logging.exception(error_msg)  # 记录完整堆栈信息
+            self.new_message_received.emit(error_msg)
+    def append_message(self, message):
+        """在主线程安全地更新UI"""
+        self.chat_display.append(message)
 
     def button_style(self):
         return """

@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QPoint, QThread, pyqtSignal
 from TermAgent import TermAgent
+import re
 import time
 
 class Worker(QThread):
@@ -17,7 +18,7 @@ class Worker(QThread):
         self.message = message
 
     def run(self):
-        self.message=str(self.message)
+        self.message = str(self.message)
         try:
             response = self.agent.chat([
                 {"role": "user", "content": self.message}
@@ -26,7 +27,7 @@ class Worker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-class  TermPage(QWidget):
+class TermPage(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -36,12 +37,8 @@ class  TermPage(QWidget):
         self._drag_active = False  # 用于窗口拖动
         self._drag_position = QPoint()
         self.message_history = [{
-            'role': 'system', 
-            'content': '你是一个专业的软件工程课程助手的术语解析智能体，主动对user的软件工程相关术语进行解释。\
-                        这里用“role”和对应“content”来保持上下文，请你每次针对user最后一个的content进行回答。\
-                        请避免一直重复同一句话。\
-                        同时，你必须拒绝回答任何与软件工程无关的问题，并礼貌地将对话引导回主题。\
-                        "'
+            'role': 'system',
+            'content': '你是一个专业的代码生成智能体，根据用户的需求生成相应的代码。请确保生成的代码逻辑清晰、注释完整，并且尽可能考虑到各种边界情况。同时，你必须拒绝回答任何与代码生成无关的问题，并礼貌地将对话引导回主题。'
         }]
         self.setup_ui()
         self.worker = Worker(self.message_history.copy())
@@ -60,7 +57,7 @@ class  TermPage(QWidget):
         title_layout.setSpacing(0)
 
         # 智能体名称
-        self.title_label = QLabel("术语解析助手")
+        self.title_label = QLabel("代码生成助手")
         self.title_label.setStyleSheet("font-size: 16px; color: #ffffff; font-weight: bold;")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_layout.addWidget(self.title_label)
@@ -88,27 +85,13 @@ class  TermPage(QWidget):
         self.title_bar.setLayout(title_layout)
         main_layout.addWidget(self.title_bar)
 
-        # 支持关键词展示 - 高度贴近，仅占 25px
-        self.keywords_label = QLabel("支持关键词：")
-        self.keywords_label.setStyleSheet("padding: 0px 5px; font-size: 12px; color: #555555;")
-        self.keywords_label.setFixedHeight(25)  # 减小高度
-        main_layout.addWidget(self.keywords_label)
-
-        # 对话区 - 占据主要高度
-        self.dialogue_area = QTextEdit()
-        self.dialogue_area.setReadOnly(True)
-        self.dialogue_area.setStyleSheet(
-            "background-color: #ffffff; border: 1px solid #ccc; border-radius: 0px;"
-        )
-        main_layout.addWidget(self.dialogue_area)
-
-        # 输入区 - 高度贴近，仅占 60px，高度适中
+        # 输入区 - 位于上部
         input_layout = QHBoxLayout()
         input_layout.setContentsMargins(5, 5, 5, 5)
         input_layout.setSpacing(5)
 
         self.input_entry = QLineEdit()
-        self.input_entry.setPlaceholderText("请输入您的问题...")
+        self.input_entry.setPlaceholderText("请输入代码生成需求...")
         self.input_entry.setStyleSheet(
             "padding: 5px; font-size: 14px; border: 1px solid #007acc;"
         )
@@ -124,6 +107,14 @@ class  TermPage(QWidget):
         input_layout.addWidget(self.send_button)
         main_layout.addLayout(input_layout)
 
+        # 对话区 - 位于下部，用于显示 AI 结果
+        self.result_area = QTextEdit()
+        self.result_area.setReadOnly(True)
+        self.result_area.setStyleSheet(
+            "background-color: #ffffff; border: 1px solid #ccc; border-radius: 0px;"
+        )
+        main_layout.addWidget(self.result_area)
+
         self.setLayout(main_layout)
 
         # 绑定发送事件
@@ -133,39 +124,47 @@ class  TermPage(QWidget):
     def on_send(self):
         message = self.input_entry.text()
         if message:
-            self.display_user_message(message)
             self.input_entry.clear()
-            
-            # 显示"正在思考..."提示
-            thinking_msg = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考...</div>"
-            self.dialogue_area.append(thinking_msg)
-            # self.thinking_msg_id = self.get_last_message_id()
             self.message_history.append({"role": "user", "content": message})
+            # 显示 AI 正在思考的提示信息
+            thinking_message = "<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: 正在思考，请稍候...</div>"
+            self.result_area.append(thinking_message)
             # 创建并启动工作线程
             self.worker = Worker(self.message_history.copy())
             self.worker.finished.connect(self.handle_response)
-            self.worker.error.connect(self.display_model_message)
+            self.worker.error.connect(self.display_error_message)
             self.worker.start()
 
     def handle_response(self, response, original_message):
-        """处理LLM的响应"""
+        """处理 LLM 的响应"""
         if response and 'choices' in response and len(response['choices']) > 0:
             reply = response['choices'][0]['message']['content']
-            self.display_model_message(reply)
-            
-            # 添加AI回复到历史
+            self.display_result(reply)
+            # 添加 AI 回复到历史
             self.message_history.append({"role": "assistant", "content": reply})
         else:
             self.display_error_message("错误: 无法获取有效的回复")
 
-    def display_user_message(self, message):
-        message_id = f"user_msg_{int(time.time()*1000)}"
-        user_message = f"<div style='background-color: #87CEEB; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-end; color: #fff; text-align: right;'>你: {message}</div>"
-        self.dialogue_area.append(user_message)
+    def display_result(self, message):
+        # 提取代码部分
+        code_pattern = re.compile(r'```([\s\S]*?)```|`([^`]*)`')
+        code_matches = code_pattern.findall(message)
+        code_blocks = []
+        for match in code_matches:
+            if match[0]:
+                code_blocks.append(match[0].strip())
+            elif match[1]:
+                code_blocks.append(match[1].strip())
+        code_content = '\n\n'.join(code_blocks)
 
-    def display_model_message(self, message):
-        model_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: {message}</div>"
-        self.dialogue_area.append(model_message)
+        self.result_area.clear()
+        result_message = f"<div style='background-color: #D3D3D3; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>AI: <pre><code>{code_content}</code></pre></div>"
+        self.result_area.append(result_message)
+
+    def display_error_message(self, message):
+        self.result_area.clear()
+        error_message = f"<div style='background-color: #FFB6C1; padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 70%; align-self: flex-start; text-align: left;'>错误: {message}</div>"
+        self.result_area.append(error_message)
 
     # ===========================
     # 窗口拖动逻辑
@@ -178,15 +177,3 @@ class  TermPage(QWidget):
 
     def mouseReleaseEvent(self, event):
         event.ignore()
-
-
-
-# if __name__ == "__main__":
-#     app = QApplication(sys.argv)
-
-#     # 测试窗口
-#     window = ConceptPage()
-#     window.resize(700, 800)  # 宽度 700，高度 800，与主窗口高度保持一致
-#     window.show()
-
-#     sys.exit(app.exec())
